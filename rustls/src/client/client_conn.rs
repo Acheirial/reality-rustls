@@ -13,6 +13,7 @@ use crate::builder::ConfigBuilder;
 use crate::client::{EchMode, EchStatus};
 use crate::common_state::{CommonState, Protocol, Side};
 use crate::conn::{ConnectionCore, UnbufferedConnectionCommon};
+use crate::crypto::ActiveKeyExchange;
 use crate::crypto::{CryptoProvider, SupportedKxGroup};
 use crate::enums::{CipherSuite, ProtocolVersion, SignatureScheme};
 use crate::error::Error;
@@ -30,6 +31,18 @@ use crate::unbuffered::{EncryptError, TransmitTlsData};
 #[cfg(doc)]
 use crate::{DistinguishedName, crypto};
 use crate::{KeyLog, WantsVersions, compress, sign, verify, versions};
+
+/// Callback for REALITY protocol injection
+pub trait RealityCallback: fmt::Debug + Send + Sync {
+    /// Applies the REALITY protocol logic, modifying the session ID if necessary.
+    fn apply_reality(
+        &self,
+        kx: &dyn ActiveKeyExchange,
+        random: &[u8; 32],
+        session_id: &mut [u8; 32], // Modifies in place
+        raw_hello: &[u8],
+    ) -> Result<(), Error>;
+}
 
 /// A trait for the ability to store client session data, so that sessions
 /// can be resumed in future connections.
@@ -294,6 +307,9 @@ pub struct ClientConfig {
     ///
     /// [RFC 9149]: https://datatracker.ietf.org/doc/html/rfc9149
     pub send_ticket_request: Option<TicketRequest>,
+
+    /// Configuration for REALITY protocol.
+    pub reality_callback: Option<Arc<dyn RealityCallback>>,
 }
 
 /// Desired session ticket counts for the RFC 9149 `ticket_request` extension.

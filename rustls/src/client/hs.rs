@@ -27,6 +27,7 @@ use crate::error::{Error, PeerIncompatible, PeerMisbehaved};
 use crate::hash_hs::HandshakeHashBuffer;
 use crate::log::{debug, trace};
 use crate::msgs::base::Payload;
+use crate::msgs::codec::Codec;
 use crate::msgs::enums::{Compression, ExtensionType};
 use crate::msgs::handshake::{
     CertificateStatusRequest, ClientExtensions, ClientExtensionsInput, ClientHelloPayload,
@@ -447,6 +448,26 @@ fn emit_client_hello_for_retry(
     input.hello.offered_cipher_suites = chp_payload.cipher_suites.clone();
 
     let mut chp = HandshakeMessagePayload(HandshakePayload::ClientHello(chp_payload));
+
+    if let Some(rc) = &config.reality_callback {
+        if let Some(share) = &key_share {
+            if let HandshakePayload::ClientHello(ref mut chp_inner) = chp.0 {
+                // VERY IMPORTANT: Initialize to 32 zeros BEFORE computing raw_hello
+                chp_inner.session_id.len = 32;
+                chp_inner.session_id.data = [0u8; 32];
+            }
+            let raw_hello = chp.get_encoding();
+
+            if let HandshakePayload::ClientHello(ref mut chp_inner) = chp.0 {
+                rc.apply_reality(
+                    &**share,
+                    &input.random.0,
+                    &mut chp_inner.session_id.data,
+                    &raw_hello,
+                )?;
+            }
+        }
+    }
 
     let tls13_early_data_key_schedule = match (ech_state.as_mut(), tls13_session) {
         // If we're performing ECH and resuming, then the PSK binder will have been dealt with
